@@ -4,9 +4,13 @@ library(dplyr)
 library(tibble)
 library(openxlsx)
 library(zip)
+library(stringr)
+library(tidyr)
+
+options(shiny.sanitize.errors = FALSE)
 
 # =====================================================
-# SAMPLE DATA (DEFAULT)  ✅ UPDATED (adds new columns)
+# SAMPLE DATA (DEFAULT) ✅
 # =====================================================
 sample_data <- tribble(
   ~`STAFF NAME`, ~`STAFF TYPE`, ~`ACCOUNT NUMBER`, ~`IDENTIFICATION CARD`,
@@ -32,19 +36,44 @@ sample_data <- tribble(
   "single", 0
 )
 
-
 # =====================================================
 # HELPERS
 # =====================================================
-lookup_band <- function(tbl, wage) {
-  tbl %>% filter(wage > wage_low, wage <= wage_high) %>% slice(1)
+template_path <- "employeeslip.xlsx"  # <-- keep in app folder, or change path
+
+ensure_col <- function(df, col, default) {
+  if (!col %in% names(df)) df[[col]] <- default
+  df
 }
 
-template_path <- "employeeslip.xlsx"
+as_num0 <- function(x) suppressWarnings(as.numeric(replace_na(x, 0)))
+
+normalize_staff_type <- function(x) {
+  x <- str_trim(as.character(x))
+  x <- ifelse(is.na(x) | x == "", "Office", x)
+  x_low <- str_to_lower(x)
+  ifelse(x_low %in% c("field", "site", "outdoor"), "Field", "Office")
+}
+
+normalize_marital <- function(x) {
+  x <- str_trim(as.character(x))
+  x <- ifelse(is.na(x) | x == "", "single", x)
+  x
+}
+
+make_unique_sheet_name <- function(name, existing) {
+  base <- substr(name, 1, 28)
+  i <- 1
+  new_name <- base
+  while (new_name %in% existing) {
+    new_name <- paste0(base, "_", i)
+    i <- i + 1
+  }
+  new_name
+}
 
 # =====================================================
 # SOCSO TABLE 2025 (FIRST CATEGORY - EMPLOYER + EMPLOYEE)
-# (Using the SOCSO schedule you provided)
 # =====================================================
 socso_act4 <- tribble(
   ~wage_low, ~wage_high,
@@ -81,54 +110,56 @@ socso_act4 <- tribble(
   2100,  2200,  37.65, 10.75, 48.40, 26.90,
   2200,  2300,  39.35, 11.25, 50.60, 28.10,
   2300,  2400,  41.15, 11.75, 52.90, 29.40,
-  2400,  2500,  42.85, 12.25, 55.10, 30.60,
-  2500,  2600,  44.65, 12.75, 57.40, 31.90,
-  2600,  2700,  46.35, 13.25, 59.60, 33.10,
-  2700,  2800,  48.15, 13.75, 61.90, 34.40,
-  2800,  2900,  49.85, 14.25, 64.10, 35.60,
-  2900,  3000,  51.65, 14.75, 66.40, 36.90,
+  2400,  2500,  42.85, 12.25, 55.10,  30.60,
+  2500,  2600,  44.65, 12.75, 57.40,  31.90,
+  2600,  2700,  46.35, 13.25, 59.60,  33.10,
+  2700,  2800,  48.15, 13.75, 61.90,  34.40,
+  2800,  2900,  49.85, 14.25, 64.10,  35.60,
+  2900,  3000,  51.65, 14.75, 66.40,  36.90,
   
-  3000,  3100,  53.35, 15.25, 68.60, 38.10,
-  3100,  3200,  55.15, 15.75, 70.90, 39.40,
-  3200,  3300,  56.85, 16.25, 73.10, 40.60,
-  3300,  3400,  58.65, 16.75, 75.40, 41.90,
-  3400,  3500,  60.35, 17.25, 77.60, 43.10,
-  3500,  3600,  62.15, 17.75, 79.90, 44.40,
-  3600,  3700,  63.85, 18.25, 82.10, 45.60,
-  3700,  3800,  65.65, 18.75, 84.40, 46.90,
-  3800,  3900,  67.35, 19.25, 86.60, 48.10,
-  3900,  4000,  69.15, 19.75, 88.90, 49.40,
+  3000,  3100,  53.35, 15.25, 68.60,  38.10,
+  3100,  3200,  55.15, 15.75, 70.90,  39.40,
+  3200,  3300,  56.85, 16.25, 73.10,  40.60,
+  3300,  3400,  58.65, 16.75, 75.40,  41.90,
+  3400,  3500,  60.35, 17.25, 77.60,  43.10,
+  3500,  3600,  62.15, 17.75, 79.90,  44.40,
+  3600,  3700,  63.85, 18.25, 82.10,  45.60,
+  3700,  3800,  65.65, 18.75, 84.40,  46.90,
+  3800,  3900,  67.35, 19.25, 86.60,  48.10,
+  3900,  4000,  69.15, 19.75, 88.90,  49.40,
   
-  4000,  4100,  70.85, 20.25, 91.10, 50.60,
-  4100,  4200,  72.65, 20.75, 93.40, 51.90,
-  4200,  4300,  74.35, 21.25, 95.60, 53.10,
-  4300,  4400,  76.15, 21.75, 97.90, 54.40,
-  4400,  4500,  77.85, 22.25,100.10, 55.60,
-  4500,  4600,  79.65, 22.75,102.40, 56.90,
-  4600,  4700,  81.35, 23.25,104.60, 58.10,
-  4700,  4800,  83.15, 23.75,106.90, 59.40,
-  4800,  4900,  84.85, 24.25,109.10, 60.60,
-  4900,  5000,  86.65, 24.75,111.40, 61.90,
+  4000,  4100,  70.85, 20.25, 91.10,  50.60,
+  4100,  4200,  72.65, 20.75, 93.40,  51.90,
+  4200,  4300,  74.35, 21.25, 95.60,  53.10,
+  4300,  4400,  76.15, 21.75, 97.90,  54.40,
+  4400,  4500,  77.85, 22.25,100.10,  55.60,
+  4500,  4600,  79.65, 22.75,102.40,  56.90,
+  4600,  4700,  81.35, 23.25,104.60,  58.10,
+  4700,  4800,  83.15, 23.75,106.90,  59.40,
+  4800,  4900,  84.85, 24.25,109.10,  60.60,
+  4900,  5000,  86.65, 24.75,111.40,  61.90,
   
-  5000,  5100,  88.35, 25.25,113.60, 63.10,
-  5100,  5200,  90.15, 25.75,115.90, 64.40,
-  5200,  5300,  91.85, 26.25,118.10, 65.60,
-  5300,  5400,  93.65, 26.75,120.40, 66.90,
-  5400,  5500,  95.35, 27.25,122.60, 68.10,
-  5500,  5600,  97.15, 27.75,124.90, 69.40,
-  5600,  5700,  98.85, 28.25,127.10, 70.60,
-  5700,  5800, 100.65, 28.75,129.40, 71.90,
-  5800,  5900, 102.35, 29.25,131.60, 73.10,
-  5900,  6000, 104.15, 29.75,133.90, 74.40,
+  5000,  5100,  88.35, 25.25,113.60,  63.10,
+  5100,  5200,  90.15, 25.75,115.90,  64.40,
+  5200,  5300,  91.85, 26.25,118.10,  65.60,
+  5300,  5400,  93.65, 26.75,120.40,  66.90,
+  5400,  5500,  95.35, 27.25,122.60,  68.10,
+  5500,  5600,  97.15, 27.75,124.90,  69.40,
+  5600,  5700,  98.85, 28.25,127.10,  70.60,
+  5700,  5800, 100.65, 28.75,129.40,  71.90,
+  5800,  5900, 102.35, 29.25,131.60,  73.10,
+  5900,  6000, 104.15, 29.75,133.90,  74.40,
   
-  6000,    Inf, 104.15, 29.75,133.90, 74.40
+  6000,    Inf, 104.15, 29.75,133.90,  74.40
 )
 
 calc_socso_fc <- function(wage) {
-  socso_act4 %>%
-    filter(wage > wage_low, wage <= wage_high) %>%
-    slice(1) %>%
-    select(employer_fc, employee_fc, total_fc)
+  r <- socso_act4 %>% filter(wage > wage_low, wage <= wage_high) %>% slice(1)
+  list(
+    employer_fc = as.numeric(r$employer_fc),
+    employee_fc = as.numeric(r$employee_fc),
+    total_fc    = as.numeric(r$total_fc)
+  )
 }
 
 # =====================================================
@@ -136,7 +167,6 @@ calc_socso_fc <- function(wage) {
 # =====================================================
 eis_act800 <- tribble(
   ~wage_low, ~wage_high, ~employer_eis, ~employee_eis, ~total_eis,
-  
   0,    30,  0.05,  0.05,  0.10,
   30,    50,  0.10,  0.10,  0.20,
   50,    70,  0.15,  0.15,  0.30,
@@ -151,7 +181,6 @@ eis_act800 <- tribble(
   700,   800,  1.50,  1.50,  3.00,
   800,   900,  1.70,  1.70,  3.40,
   900,  1000,  1.90,  1.90,  3.80,
-  
   1000,  1100,  2.10,  2.10,  4.20,
   1100,  1200,  2.30,  2.30,  4.60,
   1200,  1300,  2.50,  2.50,  5.00,
@@ -162,7 +191,6 @@ eis_act800 <- tribble(
   1700,  1800,  3.50,  3.50,  7.00,
   1800,  1900,  3.70,  3.70,  7.40,
   1900,  2000,  3.90,  3.90,  7.80,
-  
   2000,  2100,  4.10,  4.10,  8.20,
   2100,  2200,  4.30,  4.30,  8.60,
   2200,  2300,  4.50,  4.50,  9.00,
@@ -173,7 +201,6 @@ eis_act800 <- tribble(
   2700,  2800,  5.50,  5.50, 11.00,
   2800,  2900,  5.70,  5.70, 11.40,
   2900,  3000,  5.90,  5.90, 11.80,
-  
   3000,  3100,  6.10,  6.10, 12.20,
   3100,  3200,  6.30,  6.30, 12.60,
   3200,  3300,  6.50,  6.50, 13.00,
@@ -182,20 +209,18 @@ eis_act800 <- tribble(
   3500,  3600,  7.10,  7.10, 14.20,
   3600,  3700,  7.30,  7.30, 14.60,
   3700,  3800,  7.50,  7.50, 15.00,
-  3800,  3900,  7.70,  7.70,  15.40,
-  3900,  4000,  7.90,  7.90,  15.80,
-  
-  4000,  4100,  8.10,  8.10,  16.20,
-  4100,  4200,  8.30,  8.30,  16.60,
-  4200,  4300,  8.50,  8.50,  17.00,
-  4300,  4400,  8.70,  8.70,  17.40,
-  4400,  4500,  8.90,  8.90,  17.80,
-  4500,  4600,  9.10,  9.10,  18.20,
-  4600,  4700,  9.30,  9.30,  18.60,
-  4700,  4800,  9.50,  9.50,  19.00,
-  4800,  4900,  9.70,  9.70,  19.40,
-  4900,  5000,  9.90,  9.90,  19.80,
-  
+  3800,  3900,  7.70,  7.70, 15.40,
+  3900,  4000,  7.90,  7.90, 15.80,
+  4000,  4100,  8.10,  8.10, 16.20,
+  4100,  4200,  8.30,  8.30, 16.60,
+  4200,  4300,  8.50,  8.50, 17.00,
+  4300,  4400,  8.70,  8.70, 17.40,
+  4400,  4500,  8.90,  8.90, 17.80,
+  4500,  4600,  9.10,  9.10, 18.20,
+  4600,  4700,  9.30,  9.30, 18.60,
+  4700,  4800,  9.50,  9.50, 19.00,
+  4800,  4900,  9.70,  9.70, 19.40,
+  4900,  5000,  9.90,  9.90, 19.80,
   5000,  5100, 10.10, 10.10, 20.20,
   5100,  5200, 10.30, 10.30, 20.60,
   5200,  5300, 10.50, 10.50, 21.00,
@@ -206,19 +231,20 @@ eis_act800 <- tribble(
   5700,  5800, 11.50, 11.50, 23.00,
   5800,  5900, 11.70, 11.70, 23.40,
   5900,  6000, 11.90, 11.90, 23.80,
-  
   6000,   Inf, 11.90, 11.90, 23.80
 )
 
 calc_eis <- function(wage) {
-  eis_act800 %>%
-    filter(wage > wage_low, wage <= wage_high) %>%
-    slice(1) %>%
-    select(employer_eis, employee_eis, total_eis)
+  r <- eis_act800 %>% filter(wage > wage_low, wage <= wage_high) %>% slice(1)
+  list(
+    employer_eis = as.numeric(r$employer_eis),
+    employee_eis = as.numeric(r$employee_eis),
+    total_eis    = as.numeric(r$total_eis)
+  )
 }
 
 # =====================================================
-# INCOME TAX (YOUR BRACKETS + YOUR RELIEFS APPROX)
+# INCOME TAX (BRACKETS + RELIEFS APPROX)
 # =====================================================
 tax_annual_from_brackets <- function(chargeable_income) {
   x <- max(chargeable_income, 0)
@@ -254,64 +280,66 @@ calc_pcb <- function(monthly_salary, status, children, epf_employee_rate) {
   round(max(annual_tax - rebate_self, 0) / 12, 2)
 }
 
-make_unique_sheet_name <- function(name, existing) {
-  base <- substr(name, 1, 28)
-  i <- 1
-  new_name <- base
-  while (new_name %in% existing) {
-    new_name <- paste0(base, "_", i)
-    i <- i + 1
-  }
-  new_name
-}
-
 write_one_payslip <- function(wb, sheet, emp, pay_month, pay_date) {
   
-  ## ---------------- HEADER ----------------
-  writeData(wb, sheet, emp$`STAFF NAME`,          "B2", overwrite = TRUE)
-  writeData(wb, sheet, emp$`IDENTIFICATION CARD`, "B3", overwrite = TRUE)
-  writeData(wb, sheet, emp$`STAFF TYPE`,          "B4", overwrite = TRUE)
+  getv <- function(nm) emp[[nm]][[1]]
   
-  writeData(wb, sheet, pay_month,              "D2", overwrite = TRUE)
-  writeData(wb, sheet, as.character(pay_date), "D3", overwrite = TRUE)
+  # -------------------------
+  # Header (matches Template)
+  # -------------------------
+  writeData(wb, sheet, getv("STAFF NAME"),          startCol = 2, startRow = 3) # B3
+  writeData(wb, sheet, getv("IDENTIFICATION CARD"), startCol = 2, startRow = 4) # B4
+  writeData(wb, sheet, pay_month,                  startCol = 4, startRow = 3) # D3
+  writeData(wb, sheet, as.character(pay_date),     startCol = 4, startRow = 4) # D4
   
-  ## ---------------- EARNINGS ----------------
-  writeData(wb, sheet, emp$BASIC,                  "B6",  overwrite = TRUE)
-  writeData(wb, sheet, emp$OVERTIME,               "B7",  overwrite = TRUE)
-  writeData(wb, sheet, emp$`SUNDAY PAY`,           "B8",  overwrite = TRUE)
-  writeData(wb, sheet, emp$`ATTENDANCE ALLOWANCE`, "B9",  overwrite = TRUE)
-  writeData(wb, sheet, emp$`ALLOWANCE TRANSPORT`,  "B10", overwrite = TRUE)
-  writeData(wb, sheet, emp$`CASH ALLOWANCE`,       "B11", overwrite = TRUE)
-  writeData(wb, sheet, emp$`BIKE ALLOWANCE`,       "B12", overwrite = TRUE)
+  # -------------------------
+  # Earnings (B6:B10)
+  # Template sums B6:B10 into B12
+  # -------------------------
+  writeData(wb, sheet, getv("BASIC PAYABLE"),        startCol = 2, startRow = 6)  # B6 BASIC
+  writeData(wb, sheet, getv("OVERTIME"),             startCol = 2, startRow = 7)  # B7 SUNDAY
+  writeData(wb, sheet, getv("SUNDAY PAY"),           startCol = 2, startRow = 8)  # B7 SUNDAY
+  writeData(wb, sheet, getv("ALLOWANCE TRANSPORT"),  startCol = 2, startRow = 9)  # B8 TRAVELLING
+  writeData(wb, sheet, getv("ATTENDANCE ALLOWANCE"), startCol = 2, startRow = 10)  # B9 ATTENDANCE
   
-  writeData(wb, sheet, emp$`GROSS SALARY`,         "B14", overwrite = TRUE)
+  # B10 is the "extra allowance" line (blank label in your template)
+  other_allow_b10 <- getv("ALLOWANCE") + getv("CASH ALLOWANCE") + getv("BIKE ALLOWANCE") 
+  writeData(wb, sheet, other_allow_b10,              startCol = 2, startRow = 10) # B10
   
-  ## ---------------- DEDUCTIONS ----------------
-  writeData(wb, sheet, emp$`EMPLOYEE EPF`,         "D6",  overwrite = TRUE)
-  writeData(wb, sheet, emp$`EMPLOYEE SOCSO`,       "D7",  overwrite = TRUE)
-  writeData(wb, sheet, emp$`EMPLOYEE EIS`,         "D8",  overwrite = TRUE)
-  writeData(wb, sheet, emp$`INCOME TAX`,           "D9",  overwrite = TRUE)
+  # -------------------------
+  # Deductions (D6:D11)
+  # -------------------------
+  writeData(wb, sheet, getv("EMPLOYEE EPF"),         startCol = 4, startRow = 6)  # D6 EPF
+  writeData(wb, sheet, getv("EMPLOYEE SOCSO"),       startCol = 4, startRow = 7)  # D7 SOCSO
   
-  writeData(wb, sheet, emp$`CASH ADVANCE COMPANY`, "D10", overwrite = TRUE)
-  writeData(wb, sheet, emp$`CASH ADVANCE MANAGER`, "D11", overwrite = TRUE)
-  writeData(wb, sheet, emp$`ADVANCE-DIRECT PBB TRANSFER`, "D12", overwrite = TRUE)
-  writeData(wb, sheet, emp$`ALLOWANCE-PREPAYMENT`, "D13", overwrite = TRUE)
+  # ADVANCE (D8) = company+manager+direct transfer
+  adv_d8 <- getv("CASH ADVANCE COMPANY") + getv("CASH ADVANCE MANAGER") + getv("ADVANCE-DIRECT PBB TRANSFER")
+  writeData(wb, sheet, adv_d8,                       startCol = 4, startRow = 8)  # D8 ADVANCE
   
-  writeData(wb, sheet, emp$`TOTAL DEDUCTIONS`,     "D14", overwrite = TRUE)
+  # ALLOWANCE PREPAYMENT (D9)
+  writeData(wb, sheet, getv("ALLOWANCE-PREPAYMENT"), startCol = 4, startRow = 9)  # D9 PREPAYMENT
   
-  ## ---------------- NET / FINAL ----------------
-  writeData(wb, sheet, emp$`NETT PAY`,             "B16", overwrite = TRUE)
-  writeData(wb, sheet, emp$`FINAL PAY`,            "D16", overwrite = TRUE)
+  # U/PAID (D10) = unpaid leave deduction
+  writeData(wb, sheet, getv("NO PAY LEAVE"),         startCol = 4, startRow = 10) # D10 U/PAID
   
-  ## ---------------- EMPLOYER COST ----------------
-  writeData(wb, sheet, emp$`EMPLOYER EPF`,         "A18", overwrite = TRUE)
-  writeData(wb, sheet, emp$`EMPLOYER SOCSO`,       "B18", overwrite = TRUE)
-  writeData(wb, sheet, emp$`EMPLOYER EIS`,         "C18", overwrite = TRUE)
+  # EIS (D11)
+  writeData(wb, sheet, getv("EMPLOYEE EIS"),         startCol = 4, startRow = 11) # D11 EIS
+  
+  # -------------------------
+  # Employer + Bank + Nett Pay block
+  # -------------------------
+  writeData(wb, sheet, getv("EMPLOYER EPF"),   startCol = 1, startRow = 15) # A15 EPF
+  writeData(wb, sheet, getv("EMPLOYER SOCSO"), startCol = 2, startRow = 15) # B15 SOCSO
+  writeData(wb, sheet, getv("ACCOUNT NUMBER"), startCol = 3, startRow = 15) # C15 account
+  writeData(wb, sheet, getv("FINAL PAY"),      startCol = 4, startRow = 18) # D15 NETT PAY (RM)
+  
+  # Employer EIS: label at A16, value at B16
+  writeData(wb, sheet, getv("EMPLOYER EIS"),   startCol = 2, startRow = 16) # B16
 }
 
 
 # =====================================================
-# UI  (unchanged)
+# UI
 # =====================================================
 ui <- fluidPage(
   titlePanel("Malaysia Payroll + SOCSO/EIS + Tax (Per Employee)"),
@@ -348,34 +376,60 @@ ui <- fluidPage(
 )
 
 # =====================================================
-# SERVER  ✅ UPDATED
+# SERVER
 # =====================================================
-server <- function(input, output) {
+server <- function(input, output, session) {
   
   raw_data <- reactive({
     df <- if (is.null(input$file)) sample_data else read_excel(input$file$datapath)
     
-    # required IDs
-    if (!"IDENTIFICATION CARD" %in% names(df)) df$`IDENTIFICATION CARD` <- ""
-    if (!"ACCOUNT NUMBER" %in% names(df)) df$`ACCOUNT NUMBER` <- ""
-    if (!"STAFF TYPE" %in% names(df)) df$`STAFF TYPE` <- "Office"
-    df$`STAFF TYPE` <- ifelse(is.na(df$`STAFF TYPE`) | df$`STAFF TYPE` == "", "Office", df$`STAFF TYPE`)
+    # Guarantee required ID/text columns
+    df <- ensure_col(df, "STAFF NAME", "")
+    df <- ensure_col(df, "IDENTIFICATION CARD", "")
+    df <- ensure_col(df, "ACCOUNT NUMBER", "")
+    df <- ensure_col(df, "STAFF TYPE", "Office")
+    df <- ensure_col(df, "MARITAL STATUS", "single")
     
+    # Guarantee required numeric inputs used later
+    df <- ensure_col(df, "BASIC", 0)
+    df <- ensure_col(df, "ANNUAL LEAVE", 0)
+    df <- ensure_col(df, "ABSENCE", 0)
+    df <- ensure_col(df, "MEDICAL LEAVE", 0)
+    df <- ensure_col(df, "OT", 0)
+    df <- ensure_col(df, "SUNDAY", 0)
+    df <- ensure_col(df, "CHILDREN", 0)
     
-    # leave defaults
-    if (!"MEDICAL LEAVE" %in% names(df)) df$`MEDICAL LEAVE` <- 0
+    # Money columns
+    df <- ensure_col(df, "ALLOWANCE TRANSPORT", 0)
+    df <- ensure_col(df, "CASH ADVANCE COMPANY", 0)
+    df <- ensure_col(df, "CASH ADVANCE MANAGER", 0)
+    df <- ensure_col(df, "ALLOWANCE", 0)
+    df <- ensure_col(df, "CASH ALLOWANCE", 0)
+    df <- ensure_col(df, "BIKE ALLOWANCE", 0)
+    df <- ensure_col(df, "ADVANCE-DIRECT PBB TRANSFER", 0)
+    df <- ensure_col(df, "ALLOWANCE-PREPAYMENT", 0)
     
-    # existing money columns
-    if (!"ALLOWANCE TRANSPORT" %in% names(df)) df$`ALLOWANCE TRANSPORT` <- 0
-    if (!"CASH ADVANCE COMPANY" %in% names(df)) df$`CASH ADVANCE COMPANY` <- 0
-    if (!"CASH ADVANCE MANAGER" %in% names(df)) df$`CASH ADVANCE MANAGER` <- 0
-    
-    # ✅ NEW money columns
-    if (!"ALLOWANCE" %in% names(df)) df$`ALLOWANCE` <- 0
-    if (!"CASH ALLOWANCE" %in% names(df)) df$`CASH ALLOWANCE` <- 0
-    if (!"BIKE ALLOWANCE" %in% names(df)) df$`BIKE ALLOWANCE` <- 0
-    if (!"ADVANCE-DIRECT PBB TRANSFER" %in% names(df)) df$`ADVANCE-DIRECT PBB TRANSFER` <- 0
-    if (!"ALLOWANCE-PREPAYMENT" %in% names(df)) df$`ALLOWANCE-PREPAYMENT` <- 0
+    # Normalize types
+    df <- df %>%
+      mutate(
+        `STAFF TYPE`     = normalize_staff_type(`STAFF TYPE`),
+        `MARITAL STATUS` = normalize_marital(`MARITAL STATUS`),
+        BASIC            = as_num0(BASIC),
+        `ANNUAL LEAVE`   = as_num0(`ANNUAL LEAVE`),
+        ABSENCE          = as_num0(ABSENCE),
+        `MEDICAL LEAVE`  = as_num0(`MEDICAL LEAVE`),
+        OT               = as_num0(OT),
+        SUNDAY           = as_num0(SUNDAY),
+        CHILDREN         = as_num0(CHILDREN),
+        `ALLOWANCE TRANSPORT`         = as_num0(`ALLOWANCE TRANSPORT`),
+        `ALLOWANCE`                   = as_num0(`ALLOWANCE`),
+        `CASH ALLOWANCE`              = as_num0(`CASH ALLOWANCE`),
+        `BIKE ALLOWANCE`              = as_num0(`BIKE ALLOWANCE`),
+        `ADVANCE-DIRECT PBB TRANSFER` = as_num0(`ADVANCE-DIRECT PBB TRANSFER`),
+        `ALLOWANCE-PREPAYMENT`        = as_num0(`ALLOWANCE-PREPAYMENT`),
+        `CASH ADVANCE COMPANY`        = as_num0(`CASH ADVANCE COMPANY`),
+        `CASH ADVANCE MANAGER`        = as_num0(`CASH ADVANCE MANAGER`)
+      )
     
     df
   })
@@ -399,8 +453,8 @@ server <- function(input, output) {
         OVERTIME  = ifelse(`STAFF TYPE` == "Office", `OT/HOUR` * OT, 0),
         
         `SUNDAY PAY` = dplyr::case_when(
-          `STAFF TYPE` == "Field"  ~ ifelse(SUNDAY > 0, (`BASIC PAYABLE` / input$days) * 2.0 * SUNDAY, 0),
-          `STAFF TYPE` == "Office" ~ ifelse(SUNDAY > 0, (`BASIC/HOUR`) * 2.0 * SUNDAY, 0),
+          `STAFF TYPE` == "Field"  ~ ifelse(SUNDAY > 0, (`BASIC PAYABLE` / input$days) * input$sunday_multiplier * SUNDAY, 0),
+          `STAFF TYPE` == "Office" ~ ifelse(SUNDAY > 0, (`BASIC/HOUR`) * input$sunday_multiplier * SUNDAY, 0),
           TRUE ~ 0
         ),
         
@@ -426,22 +480,20 @@ server <- function(input, output) {
       ) %>%
       rowwise() %>%
       mutate(
-        # ---- SOCSO & EIS computed ONLY on STATUTORY WAGE
-        socso = list(calc_socso_fc(`STATUTORY WAGE`)),
-        eis   = list(calc_eis(`STATUTORY WAGE`)),
+        .socso = list(calc_socso_fc(`STATUTORY WAGE`)),
+        .eis   = list(calc_eis(`STATUTORY WAGE`)),
         
-        `EMPLOYER SOCSO` = socso$employer_fc,
-        `EMPLOYEE SOCSO` = socso$employee_fc,
+        `EMPLOYER SOCSO` = .socso$employer_fc,
+        `EMPLOYEE SOCSO` = .socso$employee_fc,
         
-        `EMPLOYER EIS` = eis$employer_eis,
-        `EMPLOYEE EIS` = eis$employee_eis,
+        `EMPLOYER EIS`   = .eis$employer_eis,
+        `EMPLOYEE EIS`   = .eis$employee_eis,
         
-        # ---- PCB computed ONLY on STATUTORY WAGE
         `INCOME TAX` = calc_pcb(
-          monthly_salary     = `STATUTORY WAGE`,
-          status             = `MARITAL STATUS`,
-          children           = CHILDREN,
-          epf_employee_rate  = input$epf_employee_rate
+          monthly_salary    = `STATUTORY WAGE`,
+          status            = `MARITAL STATUS`,
+          children          = CHILDREN,
+          epf_employee_rate = input$epf_employee_rate
         ),
         
         `TOTAL EMPLOYER COST` =
@@ -460,13 +512,11 @@ server <- function(input, output) {
           `EMPLOYEE EIS` -
           `INCOME TAX`,
         
-        # ✅ Final pay adds allowances, then subtracts ALL advances/prepayment
         `FINAL PAY` =
           `NETT PAY` +
           `OTHER ALLOWANCES TOTAL` -
           `OTHER DEDUCTIONS TOTAL`,
         
-        # ✅ Total deductions shown on payslip
         `TOTAL DEDUCTIONS` =
           `EMPLOYEE EPF` +
           `EMPLOYEE SOCSO` +
@@ -529,18 +579,23 @@ server <- function(input, output) {
   )
   
   output$download_payslips <- downloadHandler(
-    filename = function() paste0("Payslips_", input$pay_month, ".zip"),
+    filename = function() paste0("Payslips_", gsub("[^[:alnum:]_-]", "_", input$pay_month), ".zip"),
     content = function(file) {
+      validate(need(file.exists(template_path),
+                    paste0("Template not found: ", template_path,
+                           " (Put employeeslip.xlsx in the app folder or update template_path)")))
+      
       tmp_dir <- tempfile("payslips_")
       dir.create(tmp_dir)
       
       df <- payroll()
       
       for (i in seq_len(nrow(df))) {
-        emp <- df[i, ]
+        emp <- df[i, , drop = FALSE]
         
-        wb <- openxlsx::loadWorkbook("employeeslip.xlsx")
+        wb <- openxlsx::loadWorkbook(template_path)
         sheet <- "Template"
+        validate(need(sheet %in% names(wb), "Sheet 'Template' not found in employeeslip.xlsx"))
         
         write_one_payslip(
           wb        = wb,
@@ -550,8 +605,8 @@ server <- function(input, output) {
           pay_date  = input$pay_date
         )
         
-        safe_name <- gsub("[^[:alnum:] _-]", "", emp$`STAFF NAME`)
-        out_xlsx  <- file.path(tmp_dir, paste0(safe_name, "_", input$pay_month, ".xlsx"))
+        safe_name <- gsub("[^[:alnum:] _-]", "", emp[["STAFF NAME"]][[1]])
+        out_xlsx  <- file.path(tmp_dir, paste0(safe_name, "_", gsub("[^[:alnum:]_-]", "_", input$pay_month), ".xlsx"))
         openxlsx::saveWorkbook(wb, out_xlsx, overwrite = TRUE)
       }
       

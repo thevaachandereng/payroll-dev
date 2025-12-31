@@ -11,7 +11,7 @@
 
 
 
-<title>readme</title>
+<title>README</title>
 
 <script>// Pandoc 2.9 adds attributes on both header and div. We remove the former (to
 // be compatible with the behavior of Pandoc < 2.8).
@@ -352,49 +352,62 @@ display: none;
 </div>
 
 
-<div id="malaysia-payroll-payslip-generator-shiny" class="section level1">
-<h1>Malaysia Payroll + Payslip Generator (Shiny)</h1>
-<p>A complete <strong>Malaysia payroll calculator + payslip
-generator</strong> built in <strong>R Shiny</strong>, implementing:</p>
-<ul>
-<li>Full <strong>SOCSO Act 4 (First Category)</strong> table</li>
-<li>Full <strong>EIS Act 800</strong> table</li>
-<li><strong>EPF</strong> (employee + employer, configurable rates)</li>
-<li><strong>PCB income tax (annual-bracket based approximation)</strong>
-with marital status &amp; children</li>
-<li>Attendance allowance, OT, Sunday pay logic</li>
-<li>Excel-based payslip generation</li>
-</ul>
-<p>This README documents the <strong>current logic exactly as
-implemented in the latest code</strong>.</p>
+<div id="malaysia-payroll-system-shiny-excel-payslips" class="section level1">
+<h1>🇲🇾 Malaysia Payroll System (Shiny + Excel Payslips)</h1>
+<p>A fully parameterized <strong>Malaysia payroll system</strong> built
+in <strong>R + Shiny</strong>, supporting statutory deductions (EPF,
+SOCSO, EIS), PCB income tax estimation, and automated <strong>Excel
+payslip generation</strong> using a fixed Excel template.</p>
+<p>This repository contains a production-ready payroll engine suitable
+for internal HR use, auditing, and further extension.</p>
 <hr />
-<div id="features-overview" class="section level2">
-<h2>1. Features Overview</h2>
+<div id="key-features" class="section level2">
+<h2>📌 Key Features</h2>
 <ul>
-<li>Upload Excel payroll inputs or use built-in sample data</li>
-<li>Configurable company rules (OT, Sunday, attendance allowance, EPF
-rates)</li>
-<li>Correct separation of:
+<li>📥 Upload payroll data via Excel (.xlsx)</li>
+<li>🧮 Automated payroll calculations
 <ul>
-<li><strong>Statutory wage</strong> (for SOCSO / EIS / PCB)</li>
-<li><strong>Gross salary</strong> (display)</li>
-<li><strong>Final pay</strong> (what employee receives)</li>
+<li>Basic salary adjustments</li>
+<li>Overtime (OT)</li>
+<li>Sunday pay (Field vs Office logic)</li>
+<li>Attendance allowance logic</li>
 </ul></li>
-<li>Batch export:
+<li>🏛 Statutory deductions
 <ul>
-<li>Payroll table (CSV / Excel)</li>
-<li>Individual payslips (Excel, zipped)</li>
+<li>EPF (Employee &amp; Employer)</li>
+<li>SOCSO (Act 4 – First Category)</li>
+<li>EIS (Act 800)</li>
 </ul></li>
+<li>💰 Monthly PCB income tax (approximation)</li>
+<li>📊 Outputs
+<ul>
+<li>Payroll preview table (Shiny UI)</li>
+<li>CSV export</li>
+<li>Excel export</li>
+<li>Individual employee payslips (Excel)</li>
+</ul></li>
+<li>📦 Batch payslip download as ZIP</li>
 </ul>
 <hr />
 </div>
-<div id="required-input-columns-excel" class="section level2">
-<h2>2. Required Input Columns (Excel)</h2>
+<div id="project-structure" class="section level2">
+<h2>📂 Project Structure</h2>
+<pre><code>project/
+│
+├── app.R                     # Main Shiny application
+├── employeeslip.xlsx         # Payslip Excel template (required)
+├── README.md                 # Documentation (this file)
+└── sample_payroll.xlsx       # Example input file</code></pre>
+<hr />
+</div>
+<div id="input-data-requirements" class="section level2">
+<h2>🧾 Input Data Requirements</h2>
+<p>Uploaded Excel files must contain the following columns.<br />
+Missing columns will be <strong>automatically created and filled with
+defaults (0 or blank)</strong>.</p>
+<div id="employee-identifiers" class="section level3">
+<h3>🔑 Employee Identifiers</h3>
 <table>
-<colgroup>
-<col width="31%" />
-<col width="68%" />
-</colgroup>
 <thead>
 <tr class="header">
 <th>Column</th>
@@ -404,27 +417,56 @@ rates)</li>
 <tbody>
 <tr class="odd">
 <td>STAFF NAME</td>
-<td>Employee name</td>
+<td>Employee full name</td>
 </tr>
 <tr class="even">
-<td>ACCOUNT NUMBER</td>
-<td>Bank account number</td>
-</tr>
-<tr class="odd">
 <td>IDENTIFICATION CARD</td>
-<td>IC number</td>
-</tr>
-<tr class="even">
-<td>BASIC</td>
-<td>Monthly basic salary (RM)</td>
+<td>NRIC / Passport</td>
 </tr>
 <tr class="odd">
-<td>ANNUAL LEAVE</td>
-<td>Informational only</td>
+<td>ACCOUNT NUMBER</td>
+<td>Bank account</td>
 </tr>
 <tr class="even">
+<td>STAFF TYPE</td>
+<td>Office / Field</td>
+</tr>
+<tr class="odd">
+<td>MARITAL STATUS</td>
+<td>single / married_spouse_not_working</td>
+</tr>
+<tr class="even">
+<td>CHILDREN</td>
+<td>Number of dependents</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div id="salary-work-data" class="section level3">
+<h3>💵 Salary &amp; Work Data</h3>
+<table>
+<thead>
+<tr class="header">
+<th>Column</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>BASIC</td>
+<td>Monthly basic salary</td>
+</tr>
+<tr class="even">
+<td>ANNUAL LEAVE</td>
+<td>Informational</td>
+</tr>
+<tr class="odd">
 <td>ABSENCE</td>
-<td>Number of unpaid leave days</td>
+<td>Unpaid leave days</td>
+</tr>
+<tr class="even">
+<td>MEDICAL LEAVE</td>
+<td>Sick leave days</td>
 </tr>
 <tr class="odd">
 <td>OT</td>
@@ -432,207 +474,279 @@ rates)</li>
 </tr>
 <tr class="even">
 <td>SUNDAY</td>
-<td>Sunday hours</td>
-</tr>
-<tr class="odd">
-<td>ALLOWANCE TRANSPORT</td>
-<td>Transport allowance (RM)</td>
-</tr>
-<tr class="even">
-<td>CASH ADVANCE COMPANY</td>
-<td>Salary advance deduction</td>
-</tr>
-<tr class="odd">
-<td>CASH ADVANCE MANAGER</td>
-<td>Salary advance deduction</td>
-</tr>
-<tr class="even">
-<td>MARITAL STATUS</td>
-<td>single / married_spouse_working / married_spouse_not_working</td>
-</tr>
-<tr class="odd">
-<td>CHILDREN</td>
-<td>Number of children</td>
+<td>Sunday days/hours worked</td>
 </tr>
 </tbody>
 </table>
-<p>Missing <code>ACCOUNT NUMBER</code> or
-<code>IDENTIFICATION CARD</code> are auto-filled as blank.</p>
+</div>
+<div id="allowances" class="section level3">
+<h3>➕ Allowances</h3>
+<table>
+<thead>
+<tr class="header">
+<th>Column</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>ALLOWANCE TRANSPORT</td>
+</tr>
+<tr class="even">
+<td>ALLOWANCE</td>
+</tr>
+<tr class="odd">
+<td>CASH ALLOWANCE</td>
+</tr>
+<tr class="even">
+<td>BIKE ALLOWANCE</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div id="deductions-advances" class="section level3">
+<h3>➖ Deductions / Advances</h3>
+<table>
+<thead>
+<tr class="header">
+<th>Column</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>CASH ADVANCE COMPANY</td>
+</tr>
+<tr class="even">
+<td>CASH ADVANCE MANAGER</td>
+</tr>
+<tr class="odd">
+<td>ADVANCE-DIRECT PBB TRANSFER</td>
+</tr>
+<tr class="even">
+<td>ALLOWANCE-PREPAYMENT</td>
+</tr>
+</tbody>
+</table>
 <hr />
 </div>
-<div id="working-time-allowance-rules" class="section level2">
-<h2>3. Working Time &amp; Allowance Rules</h2>
-<div id="working-time" class="section level3">
-<h3>Working time</h3>
-<ul>
-<li>Working days: configurable (default <strong>26</strong>)</li>
-<li>Hours per day: configurable (default <strong>8</strong>)</li>
-</ul>
+</div>
+<div id="payroll-calculation-logic" class="section level2">
+<h2>⚙️ Payroll Calculation Logic</h2>
+<div id="daily-hourly-pay" class="section level3">
+<h3>1️⃣ Daily &amp; Hourly Pay</h3>
+<pre><code>Daily Pay    = BASIC / Working Days
+Hourly Rate = Daily Pay / Hours per Day</code></pre>
+</div>
+<div id="unpaid-leave" class="section level3">
+<h3>2️⃣ Unpaid Leave</h3>
+<pre><code>NO PAY LEAVE   = Daily Pay × ABSENCE
+BASIC PAYABLE = BASIC − NO PAY LEAVE</code></pre>
+</div>
+<div id="overtime-ot" class="section level3">
+<h3>3️⃣ Overtime (OT)</h3>
+<p><strong>Office Staff</strong></p>
+<pre><code>OT = OT Hours × Hourly Rate × OT Multiplier</code></pre>
+</div>
+<div id="sunday-pay" class="section level3">
+<h3>4️⃣ Sunday Pay</h3>
+<p><strong>Office</strong></p>
+<pre><code>Sunday Pay = Hourly Rate × Sunday Multiplier × Hours</code></pre>
+<p><strong>Field</strong></p>
+<pre><code>Sunday Pay = (Basic Payable / Working Days) × Sunday Multiplier × Days</code></pre>
 </div>
 <div id="attendance-allowance" class="section level3">
-<h3>Attendance allowance</h3>
-<p>Attendance allowance is <strong>paid only if</strong>: -
-<code>ABSENCE == 0</code> -
-<code>BASIC &lt;= Attendance Threshold</code></p>
-<p>Otherwise, attendance allowance = <strong>0</strong>.</p>
+<h3>5️⃣ Attendance Allowance</h3>
+<p>Attendance allowance is forfeited if: - Any unpaid absence - Any
+medical leave - Basic salary exceeds threshold</p>
+<pre><code>Attendance Allowance =
+  if (ABSENCE &gt; 0 OR MEDICAL LEAVE &gt; 0 OR BASIC &gt; Threshold)
+    0
+  else
+    Allowance Amount</code></pre>
 <hr />
 </div>
 </div>
-<div id="overtime-ot-calculation" class="section level2">
-<h2>4. Overtime (OT) Calculation</h2>
-<div id="ot-base-salary" class="section level3">
-<h3>OT base salary</h3>
+<div id="statutory-contributions" class="section level2">
+<h2>🏛 Statutory Contributions</h2>
+<div id="epf" class="section level3">
+<h3>EPF</h3>
 <ul>
-<li><strong>Basic only</strong> → <code>BASIC</code></li>
-<li><strong>Basic + Attendance Allowance</strong> → only if
-<code>ABSENCE == 0</code></li>
+<li>Calculated on <strong>Basic Payable</strong></li>
+<li>Rates configurable in UI</li>
+<li>Rounded up using <code>ceiling()</code></li>
 </ul>
-<pre class="text"><code>OT/HOUR = (OT Base Salary / Working Days / Hours Per Day) × OT Multiplier
-OVERTIME PAY = OT/HOUR × OT Hours</code></pre>
-<p>Attendance allowance <strong>can be included for OT</strong> if
-selected.</p>
+</div>
+<div id="socso-act-4" class="section level3">
+<h3>SOCSO (Act 4)</h3>
+<ul>
+<li>Wage-band based</li>
+<li>Applied to <strong>Statutory Wage</strong></li>
+<li>Employee &amp; employer portions calculated separately</li>
+</ul>
+</div>
+<div id="eis-act-800" class="section level3">
+<h3>EIS (Act 800)</h3>
+<ul>
+<li>Wage-band based</li>
+<li>Applied to <strong>Statutory Wage</strong></li>
+</ul>
 <hr />
 </div>
 </div>
-<div id="sunday-pay-calculation" class="section level2">
-<h2>5. Sunday Pay Calculation</h2>
-<p>Sunday pay is <strong>always calculated on BASIC only</strong>:</p>
-<pre class="text"><code>SUNDAY PAY = (BASIC / Working Days / Hours Per Day) × Sunday Multiplier × Sunday Hours</code></pre>
-<p>Attendance allowance is <strong>never included</strong> in Sunday
-pay.</p>
+<div id="income-tax-pcb-approximation" class="section level2">
+<h2>💰 Income Tax (PCB – Approximation)</h2>
+<p>PCB is estimated using: - Annualized statutory wage - EPF relief
+(capped) - Spouse &amp; child reliefs</p>
+<p>⚠️ This is an <strong>estimate only</strong>, not an LHDN-certified
+PCB calculator.</p>
 <hr />
 </div>
-<div id="statutory-wage-vs-gross-salary" class="section level2">
-<h2>6. Statutory Wage vs Gross Salary</h2>
-<div id="statutory-wage-used-for-socso-eis-pcb" class="section level3">
-<h3>Statutory Wage (used for SOCSO / EIS / PCB)</h3>
-<pre class="text"><code>STATUTORY WAGE =
-  (BASIC − NO PAY LEAVE)
-  + OVERTIME
-  + SUNDAY PAY</code></pre>
-<p>Attendance allowance is <strong>excluded</strong> by design.</p>
-</div>
-<div id="gross-salary-display-only" class="section level3">
-<h3>Gross Salary (display only)</h3>
-<pre class="text"><code>GROSS SALARY =
+<div id="salary-aggregates" class="section level2">
+<h2>🧾 Salary Aggregates</h2>
+<div id="gross-salary" class="section level3">
+<h3>Gross Salary</h3>
+<pre><code>GROSS SALARY =
   STATUTORY WAGE
-  + ATTENDANCE ALLOWANCE
-  + ALLOWANCE TRANSPORT</code></pre>
-<hr />
++ TOTAL ALLOWANCES</code></pre>
 </div>
+<div id="total-deductions" class="section level3">
+<h3>Total Deductions</h3>
+<pre><code>TOTAL DEDUCTIONS =
+  EPF (Employee)
++ SOCSO (Employee)
++ EIS (Employee)
++ Income Tax
++ Advances / Prepayments</code></pre>
 </div>
-<div id="epf-calculation" class="section level2">
-<h2>7. EPF Calculation</h2>
-<p>EPF is calculated <strong>on BASIC − NO PAY LEAVE only</strong>:</p>
-<pre class="text"><code>EMPLOYEE EPF = (BASIC − NO PAY LEAVE) × Employee EPF Rate
-EMPLOYER EPF = (BASIC − NO PAY LEAVE) × Employer EPF Rate</code></pre>
-<p>Default rates: - Employee: <strong>11%</strong> - Employer:
-<strong>13%</strong></p>
-<hr />
-</div>
-<div id="socso-act-4-first-category" class="section level2">
-<h2>8. SOCSO (Act 4 – First Category)</h2>
-<ul>
-<li>Full <strong>Act 4 table</strong> implemented</li>
-<li>Lookup is done using:</li>
-</ul>
-<pre class="text"><code>wage &gt; wage_low AND wage &lt;= wage_high</code></pre>
-<p>SOCSO is calculated on:</p>
-<pre class="text"><code>STATUTORY WAGE</code></pre>
-<p>Outputs: - Employer SOCSO - Employee SOCSO</p>
-<hr />
-</div>
-<div id="eis-act-800" class="section level2">
-<h2>9. EIS (Act 800)</h2>
-<ul>
-<li>Full <strong>Act 800 table</strong> implemented</li>
-<li>Same lookup logic as SOCSO</li>
-</ul>
-<p>EIS is calculated on:</p>
-<pre class="text"><code>STATUTORY WAGE</code></pre>
-<p>Outputs: - Employer EIS - Employee EIS</p>
-<hr />
-</div>
-<div id="pcb-income-tax-logic-important" class="section level2">
-<h2>10. PCB Income Tax Logic (Important)</h2>
-<div id="annual-based-pcb-approximation" class="section level3">
-<h3>Annual-based PCB approximation</h3>
-<p>PCB is calculated as:</p>
-<ol style="list-style-type: decimal">
-<li>Convert <strong>STATUTORY WAGE</strong> to annual income</li>
-<li>Subtract reliefs:
-<ul>
-<li>Self relief: RM 9,000</li>
-<li>Spouse relief: RM 4,000 (only if spouse not working)</li>
-<li>Child relief: RM 2,000 × children</li>
-<li>EPF relief: capped at RM 4,000 annually</li>
-</ul></li>
-<li>Apply <strong>official tax brackets</strong></li>
-<li>Apply RM 400 rebate if chargeable income ≤ RM 35,000</li>
-<li>Divide annual tax by 12</li>
-</ol>
-<pre class="text"><code>PCB (monthly) = (Annual Tax − Rebate) / 12</code></pre>
-</div>
-<div id="pcb-disclaimer" class="section level3">
-<h3>⚠️ PCB Disclaimer</h3>
-<p>This is a <strong>simplified annual-bracket PCB model</strong>.</p>
-<p>Differences vs LHDN / Salary.gov may occur because: - Real PCB tables
-do <strong>not always apply child relief</strong> monthly - LHDN uses
-<strong>PCB tables</strong>, not pure marginal tax formulas</p>
-<p>This model is suitable for <strong>internal payroll
-estimation</strong>, not statutory filing.</p>
-<hr />
-</div>
-</div>
-<div id="net-pay-final-pay" class="section level2">
-<h2>11. Net Pay &amp; Final Pay</h2>
-<div id="nett-pay-after-statutory-deductions" class="section level3">
-<h3>Nett Pay (after statutory deductions)</h3>
-<pre class="text"><code>NETT PAY =
+<div id="final-pay" class="section level3">
+<h3>Final Pay</h3>
+<pre><code>NETT PAY =
   STATUTORY WAGE
-  − EMPLOYEE EPF
-  − EMPLOYEE SOCSO
-  − EMPLOYEE EIS
-  − INCOME TAX</code></pre>
-</div>
-<div id="final-pay-employee-receives" class="section level3">
-<h3>Final Pay (employee receives)</h3>
-<pre class="text"><code>FINAL PAY =
+− EPF
+− SOCSO
+− EIS
+− Income Tax
+
+FINAL PAY =
   NETT PAY
-  + ATTENDANCE ALLOWANCE
-  + ALLOWANCE TRANSPORT
-  − CASH ADVANCE COMPANY
-  − CASH ADVANCE MANAGER</code></pre>
++ Allowances
+− Advances</code></pre>
 <hr />
 </div>
 </div>
-<div id="total-employer-cost" class="section level2">
-<h2>12. Total Employer Cost</h2>
-<pre class="text"><code>TOTAL EMPLOYER COST =
-  STATUTORY WAGE
-  + ATTENDANCE ALLOWANCE
-  + ALLOWANCE TRANSPORT
-  + EMPLOYER EPF
-  + EMPLOYER SOCSO
-  + EMPLOYER EIS</code></pre>
+<div id="payslip-excel-template-mapping" class="section level2">
+<h2>📄 Payslip Excel Template Mapping</h2>
+<p>The app writes values directly into fixed Excel cells in
+<code>employeeslip.xlsx</code>.</p>
+<div id="earnings-left" class="section level3">
+<h3>Earnings (Left)</h3>
+<table>
+<thead>
+<tr class="header">
+<th>Cell</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>B6</td>
+<td>Basic Payable</td>
+</tr>
+<tr class="even">
+<td>B7</td>
+<td>Sunday Pay</td>
+</tr>
+<tr class="odd">
+<td>B8</td>
+<td>Transport Allowance</td>
+</tr>
+<tr class="even">
+<td>B9</td>
+<td>Attendance Allowance</td>
+</tr>
+<tr class="odd">
+<td>B10</td>
+<td>OT + Other Allowances</td>
+</tr>
+<tr class="even">
+<td><strong>B12</strong></td>
+<td><strong>Gross Salary (TOTAL)</strong></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div id="deductions-right" class="section level3">
+<h3>Deductions (Right)</h3>
+<table>
+<thead>
+<tr class="header">
+<th>Cell</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>D6</td>
+<td>EPF</td>
+</tr>
+<tr class="even">
+<td>D7</td>
+<td>SOCSO</td>
+</tr>
+<tr class="odd">
+<td>D8</td>
+<td>Advances</td>
+</tr>
+<tr class="even">
+<td>D9</td>
+<td>Allowance Prepayment</td>
+</tr>
+<tr class="odd">
+<td>D10</td>
+<td>Unpaid Leave</td>
+</tr>
+<tr class="even">
+<td>D11</td>
+<td>EIS</td>
+</tr>
+<tr class="odd">
+<td><strong>D12</strong></td>
+<td><strong>Total Deductions</strong></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div id="final-pay-1" class="section level3">
+<h3>Final Pay</h3>
+<table>
+<thead>
+<tr class="header">
+<th>Cell</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>D18</td>
+<td>Final Net Pay</td>
+</tr>
+</tbody>
+</table>
+<p>⚠️ <strong>Do not modify the Excel layout</strong> unless cell
+mappings are updated in code.</p>
 <hr />
 </div>
-<div id="payslip-generation" class="section level2">
-<h2>13. Payslip Generation</h2>
-<ul>
-<li>Uses <code>employeeslip.xlsx</code> as a template</li>
-<li>Writes values to fixed cells</li>
-<li>Generates one Excel payslip per employee</li>
-<li>Zips all payslips for download</li>
-</ul>
-<div id="template-requirements" class="section level3">
-<h3>Template requirements</h3>
-<ul>
-<li>Must contain a worksheet named <strong>Template</strong></li>
-<li>Cell positions must match the code</li>
-</ul>
+</div>
+<div id="running-the-application" class="section level2">
+<h2>▶️ Running the Application</h2>
+<pre class="r"><code>shiny::runApp(&quot;app.R&quot;)</code></pre>
+<p>Ensure <code>employeeslip.xlsx</code> is located in the same
+directory as <code>app.R</code>.</p>
 <hr />
 </div>
+<div id="disclaimer" class="section level2">
+<h2>⚠️ Disclaimer</h2>
+<p>This system is intended for <strong>internal payroll estimation
+only</strong>.</p>
 </div>
 </div>
 

@@ -282,59 +282,59 @@ calc_pcb <- function(monthly_salary, status, children, epf_employee_rate) {
 
 write_one_payslip <- function(wb, sheet, emp, pay_month, pay_date) {
   
-  getv <- function(nm) emp[[nm]][[1]]
+  v <- function(x) emp[[x]][[1]]
   
-  # -------------------------
-  # Header (matches Template)
-  # -------------------------
-  writeData(wb, sheet, getv("STAFF NAME"),          startCol = 2, startRow = 3) # B3
-  writeData(wb, sheet, getv("IDENTIFICATION CARD"), startCol = 2, startRow = 4) # B4
-  writeData(wb, sheet, pay_month,                  startCol = 4, startRow = 3) # D3
-  writeData(wb, sheet, as.character(pay_date),     startCol = 4, startRow = 4) # D4
+  # ======================
+  # HEADER
+  # ======================
+  writeData(wb, sheet, v("STAFF NAME"),          startCol = 2, startRow = 3) # B3
+  writeData(wb, sheet, v("IDENTIFICATION CARD"), startCol = 2, startRow = 4) # B4
+  writeData(wb, sheet, pay_month,               startCol = 4, startRow = 3) # D3
+  writeData(wb, sheet, as.character(pay_date),  startCol = 4, startRow = 4) # D4
   
-  # -------------------------
-  # Earnings (B6:B10)
-  # Template sums B6:B10 into B12
-  # -------------------------
-  writeData(wb, sheet, getv("BASIC PAYABLE"),        startCol = 2, startRow = 6)  # B6 BASIC
-  writeData(wb, sheet, getv("OVERTIME"),             startCol = 2, startRow = 7)  # B7 SUNDAY
-  writeData(wb, sheet, getv("SUNDAY PAY"),           startCol = 2, startRow = 8)  # B7 SUNDAY
-  writeData(wb, sheet, getv("ALLOWANCE TRANSPORT"),  startCol = 2, startRow = 9)  # B8 TRAVELLING
-  writeData(wb, sheet, getv("ATTENDANCE ALLOWANCE"), startCol = 2, startRow = 10)  # B9 ATTENDANCE
+  # ======================
+  # EARNINGS (LEFT)
+  # ======================
+  writeData(wb, sheet, v("BASIC PAYABLE"),        startCol = 2, startRow = 6)  # B6
+  writeData(wb, sheet, v("SUNDAY PAY"),           startCol = 2, startRow = 7)  # B7
+  writeData(wb, sheet, v("ALLOWANCE TRANSPORT"),  startCol = 2, startRow = 8)  # B8
+  writeData(wb, sheet, v("ATTENDANCE ALLOWANCE"), startCol = 2, startRow = 9)  # B9
   
-  # B10 is the "extra allowance" line (blank label in your template)
-  other_allow_b10 <- getv("ALLOWANCE") + getv("CASH ALLOWANCE") + getv("BIKE ALLOWANCE") 
-  writeData(wb, sheet, other_allow_b10,              startCol = 2, startRow = 10) # B10
+  other_b10 <- v("OVERTIME") +
+    v("ALLOWANCE") +
+    v("CASH ALLOWANCE") +
+    v("BIKE ALLOWANCE")
+  writeData(wb, sheet, other_b10,                 startCol = 2, startRow = 10) # B10
   
-  # -------------------------
-  # Deductions (D6:D11)
-  # -------------------------
-  writeData(wb, sheet, getv("EMPLOYEE EPF"),         startCol = 4, startRow = 6)  # D6 EPF
-  writeData(wb, sheet, getv("EMPLOYEE SOCSO"),       startCol = 4, startRow = 7)  # D7 SOCSO
+  # ✅ GROSS PAY → B12
+  writeData(wb, sheet, v("GROSS SALARY"),         startCol = 2, startRow = 12) # B12
   
-  # ADVANCE (D8) = company+manager+direct transfer
-  adv_d8 <- getv("CASH ADVANCE COMPANY") + getv("CASH ADVANCE MANAGER") + getv("ADVANCE-DIRECT PBB TRANSFER")
-  writeData(wb, sheet, adv_d8,                       startCol = 4, startRow = 8)  # D8 ADVANCE
+  # ======================
+  # DEDUCTIONS (RIGHT)
+  # ======================
+  writeData(wb, sheet, v("EMPLOYEE EPF"),   startCol = 4, startRow = 6)  # D6
+  writeData(wb, sheet, v("EMPLOYEE SOCSO"), startCol = 4, startRow = 7)  # D7
   
-  # ALLOWANCE PREPAYMENT (D9)
-  writeData(wb, sheet, getv("ALLOWANCE-PREPAYMENT"), startCol = 4, startRow = 9)  # D9 PREPAYMENT
+  advance_d8 <- v("CASH ADVANCE COMPANY") +
+    v("CASH ADVANCE MANAGER") +
+    v("ADVANCE-DIRECT PBB TRANSFER")
+  writeData(wb, sheet, advance_d8,          startCol = 4, startRow = 8)  # D8
   
-  # U/PAID (D10) = unpaid leave deduction
-  writeData(wb, sheet, getv("NO PAY LEAVE"),         startCol = 4, startRow = 10) # D10 U/PAID
+  writeData(wb, sheet, v("ALLOWANCE-PREPAYMENT"), startCol = 4, startRow = 9)  # D9
+  writeData(wb, sheet, v("NO PAY LEAVE"),          startCol = 4, startRow = 10) # D10
+  writeData(wb, sheet, v("EMPLOYEE EIS"),          startCol = 4, startRow = 11) # D11
   
-  # EIS (D11)
-  writeData(wb, sheet, getv("EMPLOYEE EIS"),         startCol = 4, startRow = 11) # D11 EIS
+  # ✅ TOTAL DEDUCTIONS → D12
+  writeData(wb, sheet, v("TOTAL DEDUCTIONS"),     startCol = 4, startRow = 12) # D12
   
-  # -------------------------
-  # Employer + Bank + Nett Pay block
-  # -------------------------
-  writeData(wb, sheet, getv("EMPLOYER EPF"),   startCol = 1, startRow = 15) # A15 EPF
-  writeData(wb, sheet, getv("EMPLOYER SOCSO"), startCol = 2, startRow = 15) # B15 SOCSO
-  writeData(wb, sheet, getv("ACCOUNT NUMBER"), startCol = 3, startRow = 15) # C15 account
-  writeData(wb, sheet, getv("FINAL PAY"),      startCol = 4, startRow = 18) # D15 NETT PAY (RM)
-  
-  # Employer EIS: label at A16, value at B16
-  writeData(wb, sheet, getv("EMPLOYER EIS"),   startCol = 2, startRow = 16) # B16
+  # ======================
+  # EMPLOYER / BANK / NETT
+  # ======================
+  writeData(wb, sheet, v("EMPLOYER EPF"),   startCol = 1, startRow = 15) # A15
+  writeData(wb, sheet, v("EMPLOYER SOCSO"), startCol = 2, startRow = 15) # B15
+  writeData(wb, sheet, v("EMPLOYER EIS"),   startCol = 2, startRow = 16) # B16
+  writeData(wb, sheet, v("ACCOUNT NUMBER"), startCol = 3, startRow = 15) # C15
+  writeData(wb, sheet, v("FINAL PAY"),      startCol = 4, startRow = 18) # D15
 }
 
 
@@ -460,8 +460,8 @@ server <- function(input, output, session) {
         
         `STATUTORY WAGE` = `BASIC PAYABLE` + OVERTIME + `SUNDAY PAY`,
         
-        `EMPLOYEE EPF` = `BASIC PAYABLE` * input$epf_employee_rate,
-        `EMPLOYER EPF` = `BASIC PAYABLE` * input$epf_employer_rate,
+        `EMPLOYEE EPF` = ceiling(`BASIC PAYABLE` * input$epf_employee_rate),
+        `EMPLOYER EPF` = ceiling(`BASIC PAYABLE` * input$epf_employer_rate),
         
         `OTHER ALLOWANCES TOTAL` =
           `ALLOWANCE TRANSPORT` +

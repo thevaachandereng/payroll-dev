@@ -6,14 +6,17 @@ library(openxlsx)
 library(zip)
 library(stringr)
 library(tidyr)
+library(processx)   # for LibreOffice PDF conversion
+library(blastula)   # for sending email
+
 
 options(shiny.sanitize.errors = FALSE)
 
 # =====================================================
-# SAMPLE DATA (DEFAULT) ✅
+# SAMPLE DATA (DEFAULT) 
 # =====================================================
 sample_data <- tribble(
-  ~`STAFF NAME`, ~`STAFF TYPE`, ~`ACCOUNT NUMBER`, ~`IDENTIFICATION CARD`,
+  ~`STAFF NAME`, ~`STAFF TYPE`, ~`ACCOUNT NUMBER`, ~`IDENTIFICATION CARD`, ~EMAIL,
   ~BASIC, ~`ANNUAL LEAVE`, ~ABSENCE, ~`MEDICAL LEAVE`, ~OT, ~SUNDAY,
   ~`ALLOWANCE TRANSPORT`,
   ~`ALLOWANCE`, ~`CASH ALLOWANCE`, ~`BIKE ALLOWANCE`,
@@ -21,20 +24,58 @@ sample_data <- tribble(
   ~`CASH ADVANCE COMPANY`, ~`CASH ADVANCE MANAGER`,
   ~`MARITAL STATUS`, ~CHILDREN,
   
-  "Ali Ahmad", "Field", "123-456-789", "900101-10-1234",
+  "Ali Ahmad", "Field", "123-456-789", "900101-10-1234", "ali.ahmad@example.com",
   3500, 1, 0, 0, 0, 4, 150,
   100, 50, 0,
   0, 0,
   200, 0,
   "married_spouse_not_working", 2,
   
-  "Siti Noor", "Office", "987-654-321", "920202-08-5678",
+  "Siti Noor", "Office", "987-654-321", "920202-08-5678", "siti.noor@example.com",
   4200, 0, 2, 0, 5, 6, 200,
   0, 0, 0,
   100, 0,
   0, 100,
   "single", 0
 )
+
+
+find_qpdf <- function() {
+  paths <- c(
+    "C:/Program Files/qpdf/bin/qpdf.exe",
+    "C:/Program Files (x86)/qpdf/bin/qpdf.exe",
+    "/opt/homebrew/bin/qpdf",
+    "/usr/local/bin/qpdf",
+    "/usr/bin/qpdf"
+  )
+  
+  p <- paths[file.exists(paths)]
+  if (length(p) == 0) stop("qpdf not found. Install qpdf.")
+  p[1]
+}
+
+encrypt_pdf_qpdf <- function(input_pdf, output_pdf, password) {
+  qpdf <- find_qpdf()
+  
+  processx::run(
+    qpdf,
+    c(
+      "--encrypt", password, password, "256",
+      "--", input_pdf, output_pdf
+    ),
+    error_on_status = TRUE
+  )
+}
+
+get_ic_password <- function(ic) {
+  digits <- gsub("\\D", "", ic)
+  if (nchar(digits) >= 4) {
+    substr(digits, nchar(digits) - 3, nchar(digits))
+  } else {
+    NULL
+  }
+}
+
 
 # =====================================================
 # HELPERS
@@ -262,12 +303,12 @@ tax_annual_from_brackets <- function(chargeable_income) {
   )
 }
 
-calc_pcb <- function(monthly_salary, status, children, epf_employee_rate) {
+calc_pcb <- function(monthly_salary, status, children, epf_employee_monthly) {
   relief_self <- 9000
   relief_spouse <- ifelse(status == "married_spouse_not_working", 4000, 0)
   relief_children <- children * 2000
   
-  epf_annual <- monthly_salary * epf_employee_rate * 12
+  epf_annual <- epf_employee_monthly * 12
   epf_relief <- min(epf_annual, 4000)
   
   chargeable_annual <-
@@ -337,60 +378,237 @@ write_one_payslip <- function(wb, sheet, emp, pay_month, pay_date) {
   writeData(wb, sheet, v("FINAL PAY"),      startCol = 4, startRow = 18) # D15
 }
 
+# =====================================================
+# EPF (KWSP) – OFFICIAL JADUAL KETIGA (JAN 2025)
+# =====================================================
+
+epf_upper <- function(w) {
+  if (w <= 10) {
+    0
+  } else if (w <= 20) {
+    ceiling(w / 10) * 10
+  } else if (w <= 5000) {
+    ceiling(w / 20) * 20
+  } else if (w <= 20000) {
+    ceiling(w / 100) * 100
+  } else {
+    w
+  }
+}
+
+calc_epf <- function(wage, over_60 = FALSE) {
+  
+  if (wage <= 10) {
+    return(tibble(employee = 0, employer = 0, total = 0))
+  }
+  
+  # ≤ RM20,000 (banded – Jadual Ketiga)
+  if (wage <= 20000) {
+    
+    base <- epf_upper(wage)
+    
+    if (!over_60) {
+      emp_raw <- base * 0.11
+      er_raw  <- base * 0.13
+    } else {
+      emp_raw <- 0
+      er_raw  <- base * 0.04
+    }
+    
+    total <- ceiling(emp_raw + er_raw)
+    
+    if (emp_raw == 0) {
+      employee <- 0
+      employer <- total
+    } else {
+      employee <- round(total * emp_raw / (emp_raw + er_raw), 2)
+      employer <- total - employee
+    }
+    
+    return(tibble(employee = employee, employer = employer, total = total))
+  }
+  
+  # > RM20,000 (percentage)
+  if (!over_60) {
+    emp_raw <- wage * 0.11
+    er_raw  <- wage * 0.12
+  } else {
+    emp_raw <- 0
+    er_raw  <- wage * 0.04
+  }
+  
+  total <- ceiling(emp_raw + er_raw)
+  
+  if (emp_raw == 0) {
+    employee <- 0
+    employer <- total
+  } else {
+    employee <- round(total * emp_raw / (emp_raw + er_raw), 2)
+    employer <- total - employee
+  }
+  
+  tibble(employee = employee, employer = employer, total = total)
+}
+
+# convert excel to pdf
+excel_to_pdf <- function(xlsx, pdf) {
+  libreoffice <- if (.Platform$OS.type == "windows") {
+    "C:/Program Files/LibreOffice/program/soffice.exe"
+  } else {
+    "/Applications/LibreOffice.app/Contents/MacOS/soffice"
+  }
+  
+  if (!file.exists(libreoffice)) {
+    stop("LibreOffice not found. Install LibreOffice first.")
+  }
+  
+  processx::run(
+    libreoffice,
+    c(
+      "--headless",
+      "--convert-to", "pdf:calc_pdf_Export:SinglePageSheets=true",
+      "--outdir", dirname(pdf),
+      normalizePath(xlsx, winslash = "/")
+    ),
+    error_on_status = TRUE
+  )
+  
+  generated_pdf <- file.path(
+    dirname(pdf),
+    paste0(tools::file_path_sans_ext(basename(xlsx)), ".pdf")
+  )
+  
+  if (!file.exists(generated_pdf)) {
+    stop("PDF conversion failed.")
+  }
+  
+  file.rename(generated_pdf, pdf)
+  pdf
+}
+
+## Add a helper that builds one PDF payslip from your current app
+generate_payslip_pdf <- function(emp, pay_month, pay_date, tmp_dir) {
+  
+  safe_name <- gsub("[^[:alnum:] _-]", "", emp$`STAFF NAME`)
+  safe_month <- gsub("[^[:alnum:]_-]", "_", pay_month)
+  
+  out_xlsx <- file.path(tmp_dir, paste0(safe_name, "_", safe_month, ".xlsx"))
+  out_pdf  <- file.path(tmp_dir, paste0(safe_name, "_", safe_month, ".pdf"))
+  out_pdf_protected <- file.path(
+    tmp_dir,
+    paste0(safe_name, "_", safe_month, "_protected.pdf")
+  )
+  
+  wb <- openxlsx::loadWorkbook(template_path)
+  sheet <- "Template"
+  
+  if (!sheet %in% names(wb)) {
+    stop("Sheet 'Template' not found in employeeslip.xlsx")
+  }
+  
+  write_one_payslip(
+    wb        = wb,
+    sheet     = sheet,
+    emp       = emp,
+    pay_month = pay_month,
+    pay_date  = pay_date
+  )
+  
+  openxlsx::saveWorkbook(wb, out_xlsx, overwrite = TRUE)
+  excel_to_pdf(out_xlsx, out_pdf)
+  
+  password <- get_ic_password(emp$`IDENTIFICATION CARD`)
+  
+  if (is.null(password)) {
+    stop(paste("IC number missing/invalid for", emp$`STAFF NAME`))
+  }
+  
+  encrypt_pdf_qpdf(
+    input_pdf  = out_pdf,
+    output_pdf = out_pdf_protected,
+    password   = password
+  )
+  
+  list(
+    xlsx = out_xlsx,
+    pdf = out_pdf_protected,
+    password = password
+  )
+}
 
 # =====================================================
 # UI
 # =====================================================
 ui <- fluidPage(
-  titlePanel("Malaysia Payroll + SOCSO/EIS + Tax (Per Employee)"),
-  sidebarLayout(
-    sidebarPanel(
-      fileInput("file", "Upload Excel (optional)", accept = ".xlsx"),
-      numericInput("days", "Working Days", 26, min = 20, max = 31),
-      numericInput("hours", "Hours per Day", 8, min = 4, max = 12),
-      
-      numericInput("attendance_allowance", "Attendance Allowance (RM)", 300, min = 0, max = 10000),
-      numericInput("attendance_threshold", "Attendance Allowance Threshold (RM)", 6000, min = 0),
-      
-      numericInput("ot_multiplier", "OT Multiplier", 1.5, step = 0.1),
-      numericInput("sunday_multiplier", "Sunday Multiplier (per-day)", 2.0, step = 0.1),
-      
-      numericInput("epf_employee_rate", "EPF Employee Rate", 0.11, step = 0.01),
-      numericInput("epf_employer_rate", "EPF Employer Rate", 0.13, step = 0.01),
-      
-      textInput("pay_month", "Pay Month (e.g. August 2025)", "August 2025"),
-      dateInput("pay_date", "Pay Date", value = Sys.Date()),
-      
-      hr(),
-      downloadButton("download_sample", "Download Sample Excel")
-    ),
-    mainPanel(
-      h4("Final Payroll Table"),
-      tableOutput("final_tbl"),
-      br(),
-      downloadButton("download_csv", "Download CSV"),
-      downloadButton("download_excel", "Download Excel"),
-      downloadButton("download_payslips", "Download Payslips (Excel)")
-    )
-  )
+  uiOutput("auth_ui")
 )
 
 # =====================================================
 # SERVER
 # =====================================================
 server <- function(input, output, session) {
+  authed <- reactiveVal(FALSE)
+  
+  output$auth_ui <- renderUI({
+    if (!authed()) {
+      fluidPage(
+        titlePanel("Payroll Login"),
+        passwordInput("pwd", "Password"),
+        actionButton("login", "Login"),
+        br(),
+        textOutput("login_msg")
+      )
+    } else {
+      fluidPage(
+        titlePanel("Malaysia Payroll + SOCSO/EIS + Tax (Per Employee)"),
+        sidebarLayout(
+          sidebarPanel(
+            fileInput("file", "Upload Excel (optional)", accept = ".xlsx"),
+            numericInput("days", "Working Days", 26, min = 20, max = 31),
+            numericInput("hours", "Hours per Day", 8, min = 4, max = 12),
+            numericInput("attendance_allowance", "Attendance Allowance (RM)", 300),
+            numericInput("attendance_threshold", "Attendance Allowance Threshold (RM)", 6000),
+            numericInput("ot_multiplier", "OT Multiplier", 1.5),
+            numericInput("sunday_multiplier", "Sunday Multiplier (per-day)", 2.0),
+            textInput("pay_month", "Pay Month", "August 2025"),
+            dateInput("pay_date", "Pay Date", Sys.Date()),
+            hr(),
+            downloadButton("download_sample", "Download Sample Excel")
+          ),
+          mainPanel(
+            tableOutput("final_tbl"),
+            downloadButton("download_csv", "Download CSV"),
+            downloadButton("download_excel", "Download Excel"),
+            downloadButton("download_payslips", "Download Payslips (Excel)"),
+            actionButton("email_all", "📧 Email Payslips (PDF)"),
+            verbatimTextOutput("email_status")
+          )
+        )
+      )
+    }
+  })
+  
+  observeEvent(input$login, {
+    if (identical(input$pwd, "highacumen")) {
+      authed(TRUE)
+    }
+  })
+  
+  output$login_msg <- renderText({
+    if (!authed() && !is.null(input$login)) "❌ Wrong password"
+  })
+  
   
   raw_data <- reactive({
     df <- if (is.null(input$file)) sample_data else read_excel(input$file$datapath)
     
-    # Guarantee required ID/text columns
     df <- ensure_col(df, "STAFF NAME", "")
     df <- ensure_col(df, "IDENTIFICATION CARD", "")
     df <- ensure_col(df, "ACCOUNT NUMBER", "")
     df <- ensure_col(df, "STAFF TYPE", "Office")
     df <- ensure_col(df, "MARITAL STATUS", "single")
+    df <- ensure_col(df, "EMAIL", "")
     
-    # Guarantee required numeric inputs used later
     df <- ensure_col(df, "BASIC", 0)
     df <- ensure_col(df, "ANNUAL LEAVE", 0)
     df <- ensure_col(df, "ABSENCE", 0)
@@ -398,8 +616,8 @@ server <- function(input, output, session) {
     df <- ensure_col(df, "OT", 0)
     df <- ensure_col(df, "SUNDAY", 0)
     df <- ensure_col(df, "CHILDREN", 0)
+    df <- ensure_col(df, "OVER_60", FALSE)
     
-    # Money columns
     df <- ensure_col(df, "ALLOWANCE TRANSPORT", 0)
     df <- ensure_col(df, "CASH ADVANCE COMPANY", 0)
     df <- ensure_col(df, "CASH ADVANCE MANAGER", 0)
@@ -409,11 +627,11 @@ server <- function(input, output, session) {
     df <- ensure_col(df, "ADVANCE-DIRECT PBB TRANSFER", 0)
     df <- ensure_col(df, "ALLOWANCE-PREPAYMENT", 0)
     
-    # Normalize types
     df <- df %>%
       mutate(
         `STAFF TYPE`     = normalize_staff_type(`STAFF TYPE`),
         `MARITAL STATUS` = normalize_marital(`MARITAL STATUS`),
+        EMAIL            = as.character(replace_na(EMAIL, "")),
         BASIC            = as_num0(BASIC),
         `ANNUAL LEAVE`   = as_num0(`ANNUAL LEAVE`),
         ABSENCE          = as_num0(ABSENCE),
@@ -452,6 +670,8 @@ server <- function(input, output, session) {
         `OT/HOUR` = `BASIC/HOUR` * input$ot_multiplier,
         OVERTIME  = ifelse(`STAFF TYPE` == "Office", `OT/HOUR` * OT, 0),
         
+        OVER_60 = as.logical(replace_na(OVER_60, FALSE)),
+        
         `SUNDAY PAY` = dplyr::case_when(
           `STAFF TYPE` == "Field"  ~ ifelse(SUNDAY > 0, (`BASIC PAYABLE` / input$days) * input$sunday_multiplier * SUNDAY, 0),
           `STAFF TYPE` == "Office" ~ ifelse(SUNDAY > 0, (`BASIC/HOUR`) * input$sunday_multiplier * SUNDAY, 0),
@@ -459,9 +679,6 @@ server <- function(input, output, session) {
         ),
         
         `STATUTORY WAGE` = `BASIC PAYABLE` + OVERTIME + `SUNDAY PAY`,
-        
-        `EMPLOYEE EPF` = ceiling(`BASIC PAYABLE` * input$epf_employee_rate),
-        `EMPLOYER EPF` = ceiling(`BASIC PAYABLE` * input$epf_employer_rate),
         
         `OTHER ALLOWANCES TOTAL` =
           `ALLOWANCE TRANSPORT` +
@@ -480,8 +697,12 @@ server <- function(input, output, session) {
       ) %>%
       rowwise() %>%
       mutate(
+        .epf   = list(calc_epf(`BASIC PAYABLE`, over_60 = OVER_60)),
+        `EMPLOYEE EPF` = .epf$employee,
+        `EMPLOYER EPF` = .epf$employer,
         .socso = list(calc_socso_fc(`STATUTORY WAGE`)),
         .eis   = list(calc_eis(`STATUTORY WAGE`)),
+        
         
         `EMPLOYER SOCSO` = .socso$employer_fc,
         `EMPLOYEE SOCSO` = .socso$employee_fc,
@@ -490,10 +711,10 @@ server <- function(input, output, session) {
         `EMPLOYEE EIS`   = .eis$employee_eis,
         
         `INCOME TAX` = calc_pcb(
-          monthly_salary    = `STATUTORY WAGE`,
-          status            = `MARITAL STATUS`,
-          children          = CHILDREN,
-          epf_employee_rate = input$epf_employee_rate
+          monthly_salary         = `STATUTORY WAGE`,
+          status                 = `MARITAL STATUS`,
+          children               = CHILDREN,
+          epf_employee_monthly   = `EMPLOYEE EPF`
         ),
         
         `TOTAL EMPLOYER COST` =
@@ -524,10 +745,13 @@ server <- function(input, output, session) {
           `INCOME TAX` +
           `OTHER DEDUCTIONS TOTAL`
       ) %>%
-      mutate(across(where(is.numeric), ~ round(.x, 2))) %>%
+      mutate(across(where(is.numeric) & 
+                      !any_of(c("EMPLOYEE EPF", "EMPLOYER EPF", 
+                                "TOTAL DEDUCTIONS", "TOTAL EMPLOYER COST")),
+          ~ round(.x, 2))) %>%
       select(
         `STAFF NAME`, `ACCOUNT NUMBER`, `IDENTIFICATION CARD`,
-        `MARITAL STATUS`, CHILDREN,
+        EMAIL, `MARITAL STATUS`, CHILDREN,
         `ANNUAL LEAVE`, ABSENCE, `MEDICAL LEAVE`, `STAFF TYPE`,
         BASIC, `DAILY PAY`, `NO PAY LEAVE`, `BASIC PAYABLE`,
         OT, `OT/HOUR`, OVERTIME,
@@ -614,6 +838,79 @@ server <- function(input, output, session) {
     },
     contentType = "application/zip"
   )
+  
+  email_status <- reactiveVal("")
+  
+  output$email_status <- renderText({
+    email_status()
+  })
+  
+  observeEvent(input$email_all, {
+    req(file.exists(template_path))
+    
+    df <- payroll()
+    tmp_dir <- tempfile("email_payslips_")
+    dir.create(tmp_dir)
+    
+    sent <- 0
+    skipped <- 0
+    failed <- character(0)
+    
+    email_status("Generating and emailing payslips...")
+    
+    for (i in seq_len(nrow(df))) {
+      emp <- df[i, , drop = FALSE]
+      
+      if (is.na(emp$EMAIL[[1]]) || emp$EMAIL[[1]] == "") {
+        skipped <- skipped + 1
+        next
+      }
+      
+      tryCatch({
+        files <- generate_payslip_pdf(
+          emp       = emp,
+          pay_month = input$pay_month,
+          pay_date  = input$pay_date,
+          tmp_dir   = tmp_dir
+        )
+        
+        email <- blastula::compose_email(
+          body = blastula::md(paste0(
+            "Dear ", emp$`STAFF NAME`[[1]], ",\n\n",
+            "Attached is your **password-protected payslip** for **", input$pay_month, "**.\n\n",
+            "Password: last 4 digits of your IC number.\n\n",
+            "Regards,\nPayroll Team"
+          ))
+        ) |>
+          blastula::add_attachment(file = files$pdf)
+        
+        blastula::smtp_send(
+          email,
+          to = emp$EMAIL[[1]],
+          from = "devderaseran@gmail.com",
+          subject = paste0("Payslip - ", input$pay_month),
+          credentials = blastula::creds_file("~/.gmail_payroll_creds")
+        )
+        
+        sent <- sent + 1
+      }, error = function(e) {
+        failed <<- c(failed, paste(emp$`STAFF NAME`[[1]], "-", e$message))
+      })
+    }
+    
+    msg <- paste0(
+      "Done.\nSent: ", sent,
+      "\nSkipped (no email): ", skipped,
+      "\nFailed: ", length(failed)
+    )
+    
+    if (length(failed) > 0) {
+      msg <- paste0(msg, "\n\n", paste(failed, collapse = "\n"))
+    }
+    
+    email_status(msg)
+  })
+  
 }
 
 shinyApp(ui, server)
